@@ -141,10 +141,14 @@ module LightwardLiquidExt
       thing
     end
 
-    # The hashes and arrays this context's own assigns created, by identity.
+    # The hashes and arrays this context's own assigns created. Held weakly, so a
+    # collection that's been overwritten can be collected, and compared by
+    # identity, since an equal hash someone else passed in isn't one of ours.
+    # (ObjectSpace::WeakMap rather than WeakKeyMap: WeakKeyMap compares keys by
+    # equality, and a hash's equality changes as it's assigned into.)
     def owned_by(context)
       context.instance_variable_get(:@lightward_liquid_ext_owned) ||
-        context.instance_variable_set(:@lightward_liquid_ext_owned, {}.compare_by_identity)
+        context.instance_variable_set(:@lightward_liquid_ext_owned, ObjectSpace::WeakMap.new)
     end
 
     # A plain `{% assign x = value %}` copies the keyword literals (they're frozen

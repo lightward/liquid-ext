@@ -43,6 +43,34 @@ RSpec.describe("assignment by value, across scopes") do
     end
   end
 
+  describe "what a render remembers as its own" do
+    def owned(context) = context.instance_variable_get(:@lightward_liquid_ext_owned)
+
+    it "lets go of collections that have been overwritten" do
+      context = Liquid::Context.new
+      Liquid::Template.parse(
+        '{% for i in (1..500) %}{% assign big = "x,y,z" | split: "," %}{% assign big[3] = i %}{% endfor %}',
+      ).render!(context)
+
+      3.times { GC.start(full_mark: true, immediate_sweep: true) }
+
+      expect(owned(context)).to(be_a(ObjectSpace::WeakMap))
+      expect(owned(context).size).to(be < 100)
+    end
+
+    it "tells its own collection from an equal one passed in" do
+      host = []
+      context = Liquid::Context.new({}, { "theirs" => host })
+      Liquid::Template.parse(
+        '{% assign mine = array %}{% assign theirs[0] = 1 %}{% assign mine[0] = 1 %}',
+      ).render!(context)
+
+      expect(host).to(eq([]))
+      expect(context.scopes.last["theirs"]).to(eq([1]))
+      expect(context.scopes.last["mine"]).to(eq([1]))
+    end
+  end
+
   it "copies a host's outer-scope hash before changing it" do
     host = { "inner" => { "a" => 1 } }
     context = Liquid::Context.new({}, { "h" => host })
