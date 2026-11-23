@@ -195,6 +195,8 @@ A host can use it to give other threads a turn, check a deadline, or count work.
 
 ## Which Liquid
 
+Versions follow semver, counted from 1.0.0 on the first release: the number describes the change that comes after, not a verdict on the start, so a breaking change is 2.0.
+
 This gem targets Liquid 5.14 (the current release as of November 2026) and follows current Liquid: the gemspec allows `>= 5.14, < 6`, and new Liquid releases are what it moves toward. Most of the specs run in Liquid's default parse mode, `lax`; one renders the keyword literals and bracket assignment in each of `lax`, `warn`, `strict` and `strict2`, and another checks the literals in `strict2` in an environment without the gem. On install, it checks the Liquid version and the shape of the few Liquid methods it extends (`Liquid::ParseContext#parse_expression` and `#safe_parse_expression`, and `Liquid::Context#[]`), and raises `LightwardLiquidExt::IncompatibleLiquidError` with a pointer back here if either isn't what it expects.
 
 The specs pass on Ruby 3.4 and 4.0, and the gemspec asks for Ruby 3.4 or later.
