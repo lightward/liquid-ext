@@ -37,6 +37,41 @@ RSpec.describe("nesting depth") do
     expect { render_liquid("{{ deep | json }}", { "deep" => nested(101) }) }.to(raise_error(Liquid::Error, too_deep))
   end
 
+  describe "an object's own as_liquid_json" do
+    def custom(output)
+      Class.new do
+        define_method(:as_liquid_json) { output }
+        define_method(:to_liquid) { self }
+      end.new
+    end
+
+    it "is held to the same depth" do
+      expect(render_liquid("{{ c | json | size }}", { "c" => custom(nested(99)) }).to_i).to(be > 0)
+      expect { Liquid::Template.parse("{{ c | json }}").render!({ "c" => custom(nested(101)) }) }
+        .to(raise_error(Liquid::Error, too_deep))
+    end
+
+    it "stops at a cycle" do
+      cycle = []
+      cycle << cycle
+
+      expect { Liquid::Template.parse("{{ c | json }}").render!({ "c" => custom(cycle) }) }
+        .to(raise_error(Liquid::Error, too_deep))
+    end
+
+    it "asks the generator for the limit itself, since older json versions dump without one" do
+      expect(JSON).to(receive(:dump).with(anything, nil, nil, max_nesting: 100).and_call_original)
+
+      render_liquid("{{ c | json }}", { "c" => custom([1]) })
+    end
+
+    it "counts from where it sits" do
+      wrapped = 60.times.reduce(custom(nested(60))) { |inner, _| { "x" => inner } }
+
+      expect { Liquid::Template.parse("{{ c | json }}").render!({ "c" => wrapped }) }.to(raise_error(Liquid::Error, too_deep))
+    end
+  end
+
   it "shows the refusal as itself, not as an internal error, in a non-raising render" do
     template = Liquid::Template.parse("{{ deep | json }}")
 

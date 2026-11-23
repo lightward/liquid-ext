@@ -8,8 +8,10 @@ module LightwardLiquidExt
     #
     # An object can choose its own JSON form by responding to `as_liquid_json`.
     module JsonFilters
+      # The walk below bounds what it visits, and the generator's own max_nesting
+      # bounds the rest, including whatever an as_liquid_json returns.
       def json(object)
-        JSON.dump(JsonFilters.object_as_liquid_json(object))
+        JSON.dump(JsonFilters.object_as_liquid_json(object), nil, nil, max_nesting: MAX_DEPTH)
       rescue JSON::NestingError
         Support.too_deep!
       end
