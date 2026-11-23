@@ -76,6 +76,26 @@ RSpec.describe("assignment by value, across scopes") do
     }.to(raise_error(Liquid::Error, "Liquid error: Tried to assign within `s` during {% assign s[0] = 1 %}, but `s` is a loop variable or an include parameter, which can't be assigned into. To perform this assignment, start by copying it into a variable of your own, e.g. {% assign my_s = s %}."))
   end
 
+  it "refuses a loop variable that shadows an assigned variable, leaving both alone" do
+    context = Liquid::Context.new
+    template = Liquid::Template.parse(
+      '{% assign s = array %}{% assign items = array %}{% assign items[0] = array %}' \
+        '{% for s in items %}{% assign s[0] = 1 %}{% endfor %}',
+    )
+
+    expect { template.render!(context) }.to(raise_error(Liquid::Error, /`s` is a loop variable or an include parameter/))
+    expect(context.scopes.last["s"]).to(eq([]))
+    expect(context.scopes.last["items"]).to(eq([[]]))
+  end
+
+  it "refuses an include parameter that shadows an assigned variable" do
+    environment = environment_with("inc" => '{% assign data["x"] = 1 %}')
+
+    expect {
+      render_in(environment, '{% assign data = hash %}{% assign other = hash %}{% include "inc", data: other %}')
+    }.to(raise_error(Liquid::Error, /`data` is a loop variable or an include parameter/))
+  end
+
   it "lets a copy of a loop variable be assigned into" do
     output = render_liquid(
       '{% assign items = array %}{% assign items[0] = array %}' \

@@ -104,19 +104,22 @@ module LightwardLiquidExt
     def assignable_root(context)
       outermost = context.scopes.last
 
-      unless outermost.key?(@to)
-        if context.scopes[0..-2].any? { |scope| scope.key?(@to) }
-          raise(
-            ::Liquid::Error,
-            "Tried to assign within `#{@to}` during {% assign #{@markup.strip} %}, but `#{@to}` is a loop " \
-              "variable or an include parameter, which can't be assigned into. To perform this assignment, " \
-              "start by copying it into a variable of your own, e.g. {% assign my_#{@to} = #{@to} %}.",
-          )
-        end
+      # Liquid reads a name from the innermost scope that has it, so a loop
+      # variable or include parameter shadows an assigned variable of the same
+      # name. Refuse it rather than change the shadowed one.
+      if context.scopes[0..-2].any? { |scope| scope.key?(@to) }
+        raise(
+          ::Liquid::Error,
+          "Tried to assign within `#{@to}` during {% assign #{@markup.strip} %}, but `#{@to}` is a loop " \
+            "variable or an include parameter, which can't be assigned into. To perform this assignment, " \
+            "start by copying it into a variable of your own, e.g. {% assign my_#{@to} = #{@to} %}.",
+        )
+      end
 
+      unless outermost.key?(@to)
         if context.environments.any? { |environment| environment.key?(@to) }
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to assign within an environment variable during {% assign #{@markup.strip} %}. " \
               "To perform this assignment, start by overriding the environment variable with a " \
               "new locally-defined hash or array.",
@@ -163,7 +166,7 @@ module LightwardLiquidExt
       when Hash
         unless lookup_value.is_a?(String)
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to resolve `#{object_representation}` during `{% assign #{@markup.strip} %}`, but " \
               "`#{lookup_representation}` is not a string and cannot be used for hash lookups#{addendum}",
           )
@@ -171,7 +174,7 @@ module LightwardLiquidExt
       when Array
         unless lookup_value.is_a?(Integer)
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to resolve `#{object_representation}` during `{% assign #{@markup.strip} %}`, but " \
               "`#{lookup_representation}` is not an integer and cannot be used for array lookups#{addendum}",
           )
@@ -184,7 +187,7 @@ module LightwardLiquidExt
       when Hash
         unless key.is_a?(String)
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to use #{Support.describe_key(key)} as a key for hash assignment during " \
               "{% assign #{@markup.strip} %}, but only strings can be used for hash assignment",
           )
@@ -194,7 +197,7 @@ module LightwardLiquidExt
       when Array
         unless key.is_a?(Integer)
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to use #{Support.describe_key(key)} as an index for array assignment during " \
               "{% assign #{@markup.strip} %}, but only integers can be used for array assignment",
           )
@@ -202,7 +205,7 @@ module LightwardLiquidExt
 
         if key < -object.length
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to use #{key} as an index for array assignment during {% assign #{@markup.strip} %}, " \
               "but the array only has #{object.length} #{object.length == 1 ? "item" : "items"}",
           )
@@ -215,7 +218,7 @@ module LightwardLiquidExt
         max_gap = LightwardLiquidExt.max_array_gap
         if max_gap && gap > max_gap
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to use #{key} as an index for array assignment during {% assign #{@markup.strip} %}, " \
               "but that would add #{gap} empty slots to an array of #{object.length}, and at most " \
               "#{max_gap} are allowed",
@@ -227,7 +230,7 @@ module LightwardLiquidExt
           object[key] = value
         rescue IndexError, NoMemoryError
           raise(
-            ::Liquid::Error,
+          ::Liquid::Error,
             "Tried to use #{key} as an index for array assignment during {% assign #{@markup.strip} %}, " \
               "but that index is too large",
           )
