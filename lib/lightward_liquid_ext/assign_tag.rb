@@ -197,6 +197,10 @@ module LightwardLiquidExt
           )
         end
 
+        # The key costs what Liquid charges for a string; the value is charged
+        # with every assignment, after this.
+        context.resource_limits.increment_assign_score(assign_score_of(key))
+
         object[key] = value
       when Array
         unless key.is_a?(Integer)

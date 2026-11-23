@@ -155,6 +155,16 @@ RSpec.describe(LightwardLiquidExt::AssignTag) do
         }.to(raise_error(Liquid::Error, 'Liquid error: Assignment with dot lookups is not permitted; try replacing {% assign foo.bar = "baz" %} with {% assign foo["bar"] = "baz" %}'))
       end
 
+      it "charges the key's bytes to the assign score, before inserting it" do
+        context = Liquid::Context.new({ "key" => "k" * 200 })
+        context.resource_limits.assign_score_limit = 100
+
+        expect {
+          Liquid::Template.parse("{% assign h = hash %}{% assign h[key] = 1 %}").render!(context)
+        }.to(raise_error(Liquid::MemoryError))
+        expect(context.scopes.last["h"]).to(eq({}))
+      end
+
       it "rejects non-string keys" do
         expect {
           test('{% assign foo = "{}" | parse_json %}{% assign foo[5] = "bar" %}')
