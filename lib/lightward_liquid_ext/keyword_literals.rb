@@ -18,8 +18,9 @@ module LightwardLiquidExt
   # by identity: the newline filters treat the literal itself specially, and any
   # other "\n" (an assigned copy, a captured line break) as an ordinary string.
   #
-  # The literals stand alone: like Liquid's own `true`, they take filters
-  # (`{{ array | size }}`) but not dot lookups (`{{ array.size }}` is empty).
+  # Lookups rooted at a keyword resolve against the literal, whatever the host
+  # passed in under that name: `{{ array.size }}` is 0, `{{ hash.anything }}` and
+  # `{{ hash["anything"] }}` are empty, `{{ newline.size }}` is 1.
   module KeywordLiterals
     LITERALS = {
       "hash" => {}.freeze,
@@ -79,6 +80,7 @@ module LightwardLiquidExt
           [::Liquid::ParseContext, :parse_expression] => [[:req, :markup], [:key, :safe]],
           [::Liquid::ParseContext, :safe_parse_expression] => [[:req, :parser]],
           [::Liquid::Context, :[]] => [[:req, :expression]],
+          [::Liquid::Context, :find_variable] => [[:req, :key], [:key, :raise_on_not_found]],
         }
 
         expectations.each do |(klass, method_name), parameters|
@@ -124,6 +126,16 @@ module LightwardLiquidExt
     # Prepended to Liquid::Context, for lookups made at render time (the assign
     # tag's bracket lookups, and hosts calling context["..."]).
     module ContextHooks
+      # Every variable lookup's root comes through here (VariableLookup, `self`,
+      # every parse mode), so a lookup rooted at a keyword name resolves against
+      # the literal and never reaches a host variable of that name.
+      def find_variable(key, raise_on_not_found: true)
+        return super unless key.is_a?(String) && KeywordLiterals.installed?(environment)
+
+        literal = LITERALS[key]
+        literal.nil? ? super : literal
+      end
+
       def [](expression)
         return super unless KeywordLiterals.installed?(environment)
 

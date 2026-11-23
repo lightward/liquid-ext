@@ -51,6 +51,43 @@ RSpec.describe(LightwardLiquidExt) do
       expect(Liquid::Context.build(environment: environment)["hash"]).to(be_nil)
     end
 
+    describe "in its own environment, lookups rooted at a keyword" do
+      let(:host_data) { { "hash" => { "secret" => "value" }, "array" => ["first"], "newline" => "host" } }
+
+      [:lax, :warn, :strict, :strict2].each do |error_mode|
+        it "resolve against the literal, never the host's variable, in #{error_mode} mode" do
+          {
+            "{{ hash.secret }}" => "",
+            '{{ hash["secret"] }}' => "",
+            "{{ hash.size }}" => "0",
+            "{{ array.first }}" => "",
+            "{{ array[0] }}" => "",
+            "{{ array.size }}" => "0",
+            "{{ newline.size }}" => "1",
+            "{{ self.hash.secret }}" => "",
+            '{{ self["array"].first }}' => "",
+            "{% for x in array %}{{ x }}{% endfor %}" => "",
+            "{% if hash.secret %}leaked{% endif %}" => "",
+            "{% assign a = hash.secret %}{{ a }}" => "",
+            "{{ hash.secret | default: 'none' }}" => "none",
+          }.each do |template, expected|
+            output = Liquid::Template.parse(template, error_mode: error_mode).render!(host_data)
+            expect(output).to(eq(expected), "#{template} rendered #{output.inspect}")
+          end
+        end
+      end
+
+      it "are still read from the host in an environment without the gem" do
+        environment = Liquid::Environment.build
+
+        output = Liquid::Template.parse(
+          '{{ hash.secret }}|{{ hash["secret"] }}|{{ array.first }}|{{ self.hash.secret }}', environment: environment,
+        ).render!(host_data)
+
+        expect(output).to(eq("value|value|first|value"))
+      end
+    end
+
     it "makes the keyword literals take over host variables of the same names, in its own environment" do
       host_data = { "hash" => "H", "array" => [1], "newline" => "<br>" }
 

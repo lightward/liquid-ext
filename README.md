@@ -13,7 +13,7 @@ These come from [Mechanic](https://mechanic.dev), Lightward's automation platfor
 
 ## Before you install: two things to know
 
-**The three keywords take over three names.** In an environment where the gem is installed, `hash`, `array` and `newline` always mean the keyword literals. If your existing templates read a variable you pass in under one of those names (`{{ hash }}`, `{% for x in array %}`), they'll see the literal instead once you install. Rename those variables first, or install into a separate environment for the templates that want the keywords. Environments you don't install into are untouched.
+**The three keywords take over three names.** In an environment where the gem is installed, `hash`, `array` and `newline` always mean the keyword literals. If your existing templates read a variable you pass in under one of those names (`{{ hash }}`, `{{ hash.secret }}`, `{% for x in array %}`), they'll see the literal instead once you install: every lookup rooted at one of these names resolves against the literal. Rename those variables first, or install into a separate environment for the templates that want the keywords. Environments you don't install into are untouched.
 
 **If people you don't trust write your templates, set limits.** Liquid's own defaults set none, and this gem adds tags and filters that can allocate a lot in one step. One guard is always on: an array assignment may add at most `LightwardLiquidExt.max_array_gap` empty slots past the end (100,000 by default; raise it, or set `nil` to turn it off), so `{% assign a[1000000000] = 1 %}` is refused before anything is allocated. Liquid's three limits bound most of the rest. A regular expression timeout bounds each match. Neither bounds wall-clock time across a whole render, so add a deadline too:
 
@@ -64,7 +64,7 @@ Three keyword literals, usable anywhere Liquid takes a value:
 {{ lines | join: newline }}
 ```
 
-They're literals, like Liquid's own `true` and `nil`: `{% assign hash = "x" %}` succeeds, but doesn't change what `hash` means afterwards, and a variable passed in under one of these names can't be read (see above). Each assignment gets an empty hash or array of its own. Like `true`, they take filters (`{{ array | size }}`) but not dot lookups.
+They're literals, like Liquid's own `true` and `nil`: `{% assign hash = "x" %}` succeeds, but doesn't change what `hash` means afterwards, and a variable passed in under one of these names can't be read (see above). Each assignment gets an empty hash or array of its own. They take filters (`{{ array | size }}`), and lookups on them resolve against the literal: `{{ array.size }}` is 0, and `{{ hash.anything }}` or `{{ hash["anything"] }}` is empty.
 
 ### Assigning into hashes and arrays
 
