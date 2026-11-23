@@ -24,16 +24,22 @@ module LightwardLiquidExt
     # anything a host put in the context) are kept as they are: Liquid has no way
     # to change them in place.
     #
+    # Hashes and arrays come out as plain Hash and Array, built from their stored
+    # entries only. A hash's default value or default proc isn't carried over: it
+    # would be shared with the original, and a missing key should read as missing.
+    #
     # Refuses anything nested deeper than `levels` hashes and arrays (which also
     # stops a cycle), with a Liquid::Error rather than a stack overflow.
     def deep_copy(value, levels: MAX_DEPTH)
       case value
       when Hash
         too_deep! if levels < 1
-        value.dup.transform_values! { |entry| deep_copy(entry, levels: levels - 1) }
+        copy = {}
+        value.each_pair { |key, entry| copy[key] = deep_copy(entry, levels: levels - 1) }
+        copy
       when Array
         too_deep! if levels < 1
-        value.dup.map! { |entry| deep_copy(entry, levels: levels - 1) }
+        value.map { |entry| deep_copy(entry, levels: levels - 1) }
       when String
         value.dup
       else

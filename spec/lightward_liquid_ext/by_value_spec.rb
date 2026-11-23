@@ -53,6 +53,23 @@ RSpec.describe("assignment by value, across scopes") do
     expect(host).to(eq({ "inner" => { "a" => 1 } }))
   end
 
+  it "doesn't carry a host hash's default value or default proc into the copy" do
+    with_default = Hash.new({ "list" => [] })
+    with_default["present"] = 1
+    with_proc = Hash.new { |hash, key| hash[key] = { "list" => [] } }
+
+    [with_default, with_proc].each do |host|
+      expect {
+        # Straight to render!, since the spec helper's key-stringifying would drop the default.
+        Liquid::Template.parse('{% assign copy = host %}{% assign copy["missing"]["list"][0] = 1 %}').render!({ "host" => host })
+      }.to(raise_error(Liquid::Error, /Encountered a nil class at `copy\["missing"\]`/))
+    end
+
+    expect(with_default.default).to(eq({ "list" => [] }))
+    expect(with_default.keys).to(eq(["present"]))
+    expect(with_proc).to(be_empty)
+  end
+
   it "says plainly that a loop variable can't be assigned into" do
     expect {
       render_liquid('{% assign items = array %}{% assign items[0] = array %}{% for s in items %}{% assign s[0] = 1 %}{% endfor %}')
