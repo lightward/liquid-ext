@@ -30,18 +30,26 @@ module LightwardLiquidExt
     #
     # Refuses anything nested deeper than `levels` hashes and arrays (which also
     # stops a cycle), with a Liquid::Error rather than a stack overflow.
+    #
+    # The core classes' own methods do the walking, never a subclass's overrides, so a
+    # subclass whose `map`, `each_pair` or `dup` returns itself (or anything else) is
+    # still copied into a new plain Hash, Array or String.
+    HASH_EACH_PAIR = ::Hash.instance_method(:each_pair)
+    ARRAY_MAP = ::Array.instance_method(:map)
+    private_constant :HASH_EACH_PAIR, :ARRAY_MAP
+
     def deep_copy(value, levels: MAX_DEPTH)
       case value
       when Hash
         too_deep! if levels < 1
         copy = {}
-        value.each_pair { |key, entry| copy[key] = deep_copy(entry, levels: levels - 1) }
+        HASH_EACH_PAIR.bind_call(value) { |key, entry| copy[key] = deep_copy(entry, levels: levels - 1) }
         copy
       when Array
         too_deep! if levels < 1
-        value.map { |entry| deep_copy(entry, levels: levels - 1) }
+        ARRAY_MAP.bind_call(value) { |entry| deep_copy(entry, levels: levels - 1) }
       when String
-        value.dup
+        String.new(value)
       else
         value
       end

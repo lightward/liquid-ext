@@ -192,4 +192,32 @@ RSpec.describe("assignment by value, across scopes") do
       render_in(environment, '{% assign h = hash %}{% include "inc", data: h %}')
     }.to(raise_error(Liquid::Error, /`data` is a loop variable or an include parameter/))
   end
+
+  describe "collections whose own methods misbehave" do
+    let(:selfish_array) { Class.new(Array) { def map(...) = self } }
+    let(:selfish_hash) { Class.new(Hash) { def each_pair(...) = self } }
+    let(:selfish_string) { Class.new(String) { def dup = self } }
+
+    it "copies through the core classes' own methods, never a subclass's overrides" do
+      array = selfish_array.new([1, 2])
+      hash = selfish_hash.new.merge!("a" => 1)
+      string = selfish_string.new("s")
+
+      [array, hash, string].each do |original|
+        copy = LightwardLiquidExt::Support.deep_copy(original)
+        expect(copy).not_to(equal(original))
+        expect(copy.class).to(eq(original.class.superclass))
+      end
+    end
+
+    it "never lets an assignment reach a host array whose map returns itself" do
+      environment = Liquid::Environment.build { |env| LightwardLiquidExt.install!(env) }
+      host = selfish_array.new([1, 2])
+      context = Liquid::Context.new({}, { "host" => host }, {}, false, nil, environment: environment)
+      template = Liquid::Template.parse('{% assign c = host %}{% assign c[0] = 9 %}{{ c | json }}', environment: environment)
+
+      expect(template.render!(context)).to(eq("[9,2]"))
+      expect(host).to(eq([1, 2]))
+    end
+  end
 end
