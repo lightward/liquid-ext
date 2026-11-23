@@ -1,0 +1,223 @@
+# frozen_string_literal: true
+
+RSpec.describe("assignment by value, across scopes") do
+  let(:file_system) do
+    Class.new do
+      def initialize(templates) = @templates = templates
+      def read_template_file(name) = @templates.fetch(name)
+    end
+  end
+
+  def environment_with(templates)
+    Liquid::Environment.build(file_system: file_system.new(templates)) { |env| LightwardLiquidExt.install!(env) }
+  end
+
+  def render_in(environment, template, assigns = {})
+    Liquid::Template.parse(template, environment: environment).render!(assigns)
+  end
+
+  describe "render" do
+    let(:environment) do
+      environment_with(
+        "change" => '{% assign data["x"] = 1 %}{% assign data["inner"]["y"] = 2 %}inside: {{ data | json }}',
+        "each" => '{% assign item["seen"] = true %}{{ item | json }}',
+      )
+    end
+
+    it "gives a partial its own copy of a hash it changes" do
+      output = render_in(
+        environment,
+        '{% assign h = hash %}{% assign h["inner"] = hash %}{% render "change", data: h %} outside: {{ h | json }}',
+      )
+
+      expect(output).to(eq('inside: {"inner":{"y":2},"x":1} outside: {"inner":{}}'))
+    end
+
+    it "does the same for each item of a for render" do
+      output = render_in(
+        environment,
+        '{% assign list = array %}{% assign list[0] = hash %}{% render "each" for list as item %} {{ list | json }}',
+      )
+
+      expect(output).to(eq('{"seen":true} [{}]'))
+    end
+  end
+
+  describe "what a render remembers as its own" do
+    def owned(context) = context.instance_variable_get(:@lightward_liquid_ext_owned)
+
+    it "lets go of collections that have been overwritten" do
+      context = Liquid::Context.new
+      Liquid::Template.parse(
+        '{% for i in (1..500) %}{% assign big = "x,y,z" | split: "," %}{% assign big[3] = i %}{% endfor %}',
+      ).render!(context)
+
+      3.times { GC.start(full_mark: true, immediate_sweep: true) }
+
+      expect(owned(context)).to(be_a(ObjectSpace::WeakMap))
+      expect(owned(context).size).to(be < 100)
+    end
+
+    it "tells its own collection from an equal one passed in" do
+      host = []
+      context = Liquid::Context.new({}, { "theirs" => host })
+      Liquid::Template.parse(
+        '{% assign mine = array %}{% assign theirs[0] = 1 %}{% assign mine[0] = 1 %}',
+      ).render!(context)
+
+      expect(host).to(eq([]))
+      expect(context.scopes.last["theirs"]).to(eq([1]))
+      expect(context.scopes.last["mine"]).to(eq([1]))
+    end
+  end
+
+  describe "Hash and Array subclasses" do
+    let(:hash_subclass) { Class.new(Hash) }
+    let(:array_subclass) { Class.new(Array) }
+    let(:environment) do
+      environment_with(
+        "into_hash" => '{% assign data["x"] = 1 %}{% assign done = true %}{{ data | json }}',
+        "into_array" => '{% assign data[1] = "b" %}{% assign done = true %}{{ data | json }}',
+      )
+    end
+
+    it "are assigned into as render arguments, through a plain copy, leaving the caller's alone" do
+      given_hash = hash_subclass.new.tap { |h| h["kept"] = true }
+      given_array = array_subclass.new.push("a")
+      # The hook runs before each assign, so it sees `data` before the first
+      # assign into it (the caller's subclass) and after it (the copy).
+      seen = []
+      LightwardLiquidExt.assign_hook = ->(context) { seen << context.scopes.last["data"].class }
+
+      output = render_in(
+        environment,
+        '{% render "into_hash", data: h %}|{% render "into_array", data: a %}',
+        { "h" => given_hash, "a" => given_array },
+      )
+
+      expect(output).to(eq('{"kept":true,"x":1}|["a","b"]'))
+      expect(given_hash).to(eq({ "kept" => true }))
+      expect(given_array).to(eq(["a"]))
+      expect(seen).to(eq([hash_subclass, Hash, array_subclass, Array]))
+    ensure
+      LightwardLiquidExt.assign_hook = nil
+    end
+
+    it "come out of the copy as a plain Hash and Array" do
+      context = Liquid::Context.new({}, { "h" => hash_subclass.new, "a" => array_subclass.new })
+
+      Liquid::Template.parse('{% assign h["x"] = 1 %}{% assign a[0] = 1 %}').render!(context)
+
+      expect(context.scopes.last["h"]).to(be_instance_of(Hash).and(eq({ "x" => 1 })))
+      expect(context.scopes.last["a"]).to(be_instance_of(Array).and(eq([1])))
+    end
+
+    it "are still refused when passed in as the template's data" do
+      expect {
+        Liquid::Template.parse('{% assign h["x"] = 1 %}').render!({ "h" => hash_subclass.new })
+      }.to(raise_error(Liquid::Error, /Tried to assign within an environment variable/))
+
+      expect {
+        Liquid::Template.parse('{% assign a[0] = 1 %}').render!({ "a" => array_subclass.new })
+      }.to(raise_error(Liquid::Error, /Tried to assign within an environment variable/))
+    end
+  end
+
+  it "copies a host's outer-scope hash before changing it" do
+    host = { "inner" => { "a" => 1 } }
+    context = Liquid::Context.new({}, { "h" => host })
+
+    output = Liquid::Template.parse('{% assign h["inner"]["b"] = 2 %}{{ h | json }}').render!(context)
+
+    expect(output).to(eq('{"inner":{"a":1,"b":2}}'))
+    expect(host).to(eq({ "inner" => { "a" => 1 } }))
+  end
+
+  it "doesn't carry a host hash's default value or default proc into the copy" do
+    with_default = Hash.new({ "list" => [] })
+    with_default["present"] = 1
+    with_proc = Hash.new { |hash, key| hash[key] = { "list" => [] } }
+
+    [with_default, with_proc].each do |host|
+      expect {
+        # Straight to render!, since the spec helper's key-stringifying would drop the default.
+        Liquid::Template.parse('{% assign copy = host %}{% assign copy["missing"]["list"][0] = 1 %}').render!({ "host" => host })
+      }.to(raise_error(Liquid::Error, /Encountered a nil class at `copy\["missing"\]`/))
+    end
+
+    expect(with_default.default).to(eq({ "list" => [] }))
+    expect(with_default.keys).to(eq(["present"]))
+    expect(with_proc).to(be_empty)
+  end
+
+  it "says plainly that a loop variable can't be assigned into" do
+    expect {
+      render_liquid('{% assign items = array %}{% assign items[0] = array %}{% for s in items %}{% assign s[0] = 1 %}{% endfor %}')
+    }.to(raise_error(Liquid::Error, "Liquid error: Tried to assign within `s` during {% assign s[0] = 1 %}, but `s` is a loop variable or an include parameter, which can't be assigned into. To perform this assignment, start by copying it into a variable of your own, e.g. {% assign my_s = s %}."))
+  end
+
+  it "refuses a loop variable that shadows an assigned variable, leaving both alone" do
+    context = Liquid::Context.new
+    template = Liquid::Template.parse(
+      '{% assign s = array %}{% assign items = array %}{% assign items[0] = array %}' \
+        '{% for s in items %}{% assign s[0] = 1 %}{% endfor %}',
+    )
+
+    expect { template.render!(context) }.to(raise_error(Liquid::Error, /`s` is a loop variable or an include parameter/))
+    expect(context.scopes.last["s"]).to(eq([]))
+    expect(context.scopes.last["items"]).to(eq([[]]))
+  end
+
+  it "refuses an include parameter that shadows an assigned variable" do
+    environment = environment_with("inc" => '{% assign data["x"] = 1 %}')
+
+    expect {
+      render_in(environment, '{% assign data = hash %}{% assign other = hash %}{% include "inc", data: other %}')
+    }.to(raise_error(Liquid::Error, /`data` is a loop variable or an include parameter/))
+  end
+
+  it "lets a copy of a loop variable be assigned into" do
+    output = render_liquid(
+      '{% assign items = array %}{% assign items[0] = array %}' \
+        '{% for s in items %}{% assign my_s = s %}{% assign my_s[0] = 1 %}{{ my_s | json }}{% endfor %} {{ items | json }}',
+    )
+
+    expect(output).to(eq("[1] [[]]"))
+  end
+
+  it "says plainly that an include parameter can't be assigned into" do
+    environment = environment_with("inc" => '{% assign data["x"] = 1 %}')
+
+    expect {
+      render_in(environment, '{% assign h = hash %}{% include "inc", data: h %}')
+    }.to(raise_error(Liquid::Error, /`data` is a loop variable or an include parameter/))
+  end
+
+  describe "collections whose own methods misbehave" do
+    let(:selfish_array) { Class.new(Array) { def map(...) = self } }
+    let(:selfish_hash) { Class.new(Hash) { def each_pair(...) = self } }
+    let(:selfish_string) { Class.new(String) { def dup = self } }
+
+    it "copies through the core classes' own methods, never a subclass's overrides" do
+      array = selfish_array.new([1, 2])
+      hash = selfish_hash.new.merge!("a" => 1)
+      string = selfish_string.new("s")
+
+      [array, hash, string].each do |original|
+        copy = LightwardLiquidExt::Support.deep_copy(original)
+        expect(copy).not_to(equal(original))
+        expect(copy.class).to(eq(original.class.superclass))
+      end
+    end
+
+    it "never lets an assignment reach a host array whose map returns itself" do
+      environment = Liquid::Environment.build { |env| LightwardLiquidExt.install!(env) }
+      host = selfish_array.new([1, 2])
+      context = Liquid::Context.new({}, { "host" => host }, {}, false, nil, environment: environment)
+      template = Liquid::Template.parse('{% assign c = host %}{% assign c[0] = 9 %}{{ c | json }}', environment: environment)
+
+      expect(template.render!(context)).to(eq("[9,2]"))
+      expect(host).to(eq([1, 2]))
+    end
+  end
+end

@@ -1,0 +1,6 @@
+# Not committed: this is a library, so its specs run against whatever current
+# Liquid the gemspec allows, the way a host application would resolve it.
+/Gemfile.lock
+/pkg/
+/.bundle/
+*.gem
