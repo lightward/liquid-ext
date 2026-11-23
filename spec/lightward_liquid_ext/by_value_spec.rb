@@ -71,6 +71,58 @@ RSpec.describe("assignment by value, across scopes") do
     end
   end
 
+  describe "Hash and Array subclasses" do
+    let(:hash_subclass) { Class.new(Hash) }
+    let(:array_subclass) { Class.new(Array) }
+    let(:environment) do
+      environment_with(
+        "into_hash" => '{% assign data["x"] = 1 %}{% assign done = true %}{{ data | json }}',
+        "into_array" => '{% assign data[1] = "b" %}{% assign done = true %}{{ data | json }}',
+      )
+    end
+
+    it "are assigned into as render arguments, through a plain copy, leaving the caller's alone" do
+      given_hash = hash_subclass.new.tap { |h| h["kept"] = true }
+      given_array = array_subclass.new.push("a")
+      # The hook runs before each assign, so it sees `data` before the first
+      # assign into it (the caller's subclass) and after it (the copy).
+      seen = []
+      LightwardLiquidExt.assign_hook = ->(context) { seen << context.scopes.last["data"].class }
+
+      output = render_in(
+        environment,
+        '{% render "into_hash", data: h %}|{% render "into_array", data: a %}',
+        { "h" => given_hash, "a" => given_array },
+      )
+
+      expect(output).to(eq('{"kept":true,"x":1}|["a","b"]'))
+      expect(given_hash).to(eq({ "kept" => true }))
+      expect(given_array).to(eq(["a"]))
+      expect(seen).to(eq([hash_subclass, Hash, array_subclass, Array]))
+    ensure
+      LightwardLiquidExt.assign_hook = nil
+    end
+
+    it "come out of the copy as a plain Hash and Array" do
+      context = Liquid::Context.new({}, { "h" => hash_subclass.new, "a" => array_subclass.new })
+
+      Liquid::Template.parse('{% assign h["x"] = 1 %}{% assign a[0] = 1 %}').render!(context)
+
+      expect(context.scopes.last["h"]).to(be_instance_of(Hash).and(eq({ "x" => 1 })))
+      expect(context.scopes.last["a"]).to(be_instance_of(Array).and(eq([1])))
+    end
+
+    it "are still refused when passed in as the template's data" do
+      expect {
+        Liquid::Template.parse('{% assign h["x"] = 1 %}').render!({ "h" => hash_subclass.new })
+      }.to(raise_error(Liquid::Error, /Tried to assign within an environment variable/))
+
+      expect {
+        Liquid::Template.parse('{% assign a[0] = 1 %}').render!({ "a" => array_subclass.new })
+      }.to(raise_error(Liquid::Error, /Tried to assign within an environment variable/))
+    end
+  end
+
   it "copies a host's outer-scope hash before changing it" do
     host = { "inner" => { "a" => 1 } }
     context = Liquid::Context.new({}, { "h" => host })

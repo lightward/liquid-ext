@@ -128,15 +128,20 @@ module LightwardLiquidExt
       end
 
       thing = outermost[@to]
-      assert_assignable!(thing, @to)
-
       owned = owned_by(context)
-      unless owned.key?(thing)
-        thing = Support.deep_copy(thing)
-        context.resource_limits.increment_assign_score(assign_score_of(thing))
-        outermost[@to] = thing
-        owned[thing] = true
+      return thing if owned.key?(thing)
+
+      # Not ours, so it's copied before the first change, and the copy is a plain
+      # Hash or Array. That lets a Hash or Array subclass through here (one handed
+      # to a render partial, say); anything else is refused.
+      unless thing.is_a?(Hash) || thing.is_a?(Array)
+        assert_assignable!(thing, @to)
       end
+
+      thing = Support.deep_copy(thing)
+      context.resource_limits.increment_assign_score(assign_score_of(thing))
+      outermost[@to] = thing
+      owned[thing] = true
 
       thing
     end
