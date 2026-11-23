@@ -4,6 +4,10 @@ require "lightward_liquid_ext"
 
 LightwardLiquidExt.install!
 
+# Marks a spec helper call that only renders (to see it raise), so that nil and
+# false stay real expected values.
+NO_EXPECTATION = Object.new.freeze
+
 module LiquidHelpers
   # Renders with Liquid's default environment, raising on any error.
   def render_liquid(template, assigns = {})

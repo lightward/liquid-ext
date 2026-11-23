@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe(LightwardLiquidExt::KeywordLiterals) do
-  def test(template, expected = nil, **options)
-    if expected.nil?
+  def test(template, expected = NO_EXPECTATION, **options)
+    if expected.equal?(NO_EXPECTATION)
       render_liquid(template)
     else
       result = JSON.parse(Liquid::Template.parse(template, **options).render!.strip)

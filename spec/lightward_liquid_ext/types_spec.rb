@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 RSpec.describe("hash and array types") do
-  def test(template, expected = nil, context: {})
+  def test(template, expected, context: {})
     result = JSON.parse(render_liquid(template, context).strip)
 
-    expect(result).to(eq(expected)) if expected
+    expect(result).to(eq(expected))
   end
 
   describe "equality" do

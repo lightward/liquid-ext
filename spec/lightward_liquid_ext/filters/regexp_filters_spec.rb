@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
 RSpec.describe(LightwardLiquidExt::Filters::RegexpFilters) do
-  def test(template, expected = nil)
+  def test(template, expected)
     result = JSON.parse(render_liquid(template))
 
-    expect(result).to(eq(expected)) if expected
+    expect(result).to(eq(expected))
+  end
+
+  # For the cases that should raise before there's anything to compare.
+  def render_only(template)
+    render_liquid(template)
   end
 
   describe "match" do
@@ -39,19 +44,19 @@ RSpec.describe(LightwardLiquidExt::Filters::RegexpFilters) do
 
     it "yells about invalid input" do
       expect {
-        test('{{ 5 | match: "asdf" }}')
+        render_only('{{ 5 | match: "asdf" }}')
       }.to(raise_error(Liquid::ArgumentError, "Liquid error: match can only be used on a string; received integer instead"))
     end
 
     it "yells about non-string patterns" do
       expect {
-        test('{{ "asdf" | match: 5 }}')
+        render_only('{{ "asdf" | match: 5 }}')
       }.to(raise_error(Liquid::ArgumentError, "Liquid error: match's first argument must be a Ruby-compatible regexp pattern string; received integer instead"))
     end
 
     it "yells about invalid patterns" do
       expect {
-        test('{{ "asdf" | match: "(" }}')
+        render_only('{{ "asdf" | match: "(" }}')
       }.to(raise_error(Liquid::ArgumentError, /\ALiquid error: Regular expression error in "match" filter for pattern "\(": end pattern with unmatched parenthesis/))
     end
 
@@ -138,19 +143,19 @@ RSpec.describe(LightwardLiquidExt::Filters::RegexpFilters) do
 
     it "yells about invalid input" do
       expect {
-        test('{{ 5 | scan: "asdf" }}')
+        render_only('{{ 5 | scan: "asdf" }}')
       }.to(raise_error(Liquid::ArgumentError, "Liquid error: scan can only be used on a string; received integer instead"))
     end
 
     it "yells about non-string patterns" do
       expect {
-        test('{{ "asdf" | scan: 5 }}')
+        render_only('{{ "asdf" | scan: 5 }}')
       }.to(raise_error(Liquid::ArgumentError, "Liquid error: scan's first argument must be a Ruby-compatible regexp pattern string; received integer instead"))
     end
 
     it "yells about invalid patterns" do
       expect {
-        test('{{ "asdf" | scan: "(" }}')
+        render_only('{{ "asdf" | scan: "(" }}')
       }.to(raise_error(Liquid::ArgumentError, /\ALiquid error: Regular expression error in "scan" filter for pattern "\(": end pattern with unmatched parenthesis/))
     end
   end
