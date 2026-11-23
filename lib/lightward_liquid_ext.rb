@@ -38,8 +38,9 @@ module LightwardLiquidExt
     attr_accessor :assign_hook
 
     # Seconds a single regular expression match in `match` or `scan` may take
-    # before it gives up (Ruby's Regexp timeout). nil for no limit. This bounds
-    # one match, not a render: see the README on untrusted templates.
+    # before it gives up (Ruby's Regexp timeout). nil means inherit Ruby's
+    # process-wide Regexp.timeout, which is no limit unless the host sets one.
+    # This bounds one match, not a render: see the README on untrusted templates.
     attr_accessor :regexp_timeout
 
     # The most empty slots one array assignment may create past the end of an

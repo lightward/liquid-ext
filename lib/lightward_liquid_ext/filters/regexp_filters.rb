@@ -5,7 +5,7 @@ module LightwardLiquidExt
     # match and scan, with Ruby-compatible regular expression patterns given as strings.
     #
     # Each match runs under LightwardLiquidExt.regexp_timeout (1 second unless the
-    # host changes it). Every match `scan` finds counts once against Liquid's
+    # host changes it; nil inherits Ruby's global Regexp.timeout). Every match `scan` finds counts once against Liquid's
     # render score, so render_score_limit bounds it.
     module RegexpFilters
       CACHE_SIZE = 100
@@ -57,7 +57,7 @@ module LightwardLiquidExt
       def match(input, pattern, _options = {})
         regexp = RegexpFilters.build_regexp("match", input, pattern)
 
-        matchdata = RegexpFilters.timing_out("match", pattern) { regexp.match(input) }
+        matchdata = RegexpFilters.timing_out("match", pattern, regexp) { regexp.match(input) }
         MatchDrop.new(matchdata) if matchdata
       end
 
@@ -65,7 +65,7 @@ module LightwardLiquidExt
         regexp = RegexpFilters.build_regexp("scan", input, pattern)
         resource_limits = @context&.resource_limits
 
-        RegexpFilters.timing_out("scan", pattern) do
+        RegexpFilters.timing_out("scan", pattern, regexp) do
           input.to_enum(:scan, regexp).map do
             resource_limits&.increment_render_score(1)
             MatchDrop.new(Regexp.last_match)
@@ -99,13 +99,16 @@ module LightwardLiquidExt
           )
         end
 
-        def timing_out(filter_name, pattern)
+        def timing_out(filter_name, pattern, regexp)
           yield
         rescue Regexp::TimeoutError
+          # The timeout the match actually ran under: the regexp's own, or, when
+          # it has none, Ruby's global one.
+          timeout = regexp.timeout || Regexp.timeout
           raise(
             ::Liquid::Error,
             "#{filter_name} gave up on pattern #{Support.excerpt(pattern).to_json} after " \
-              "#{LightwardLiquidExt.regexp_timeout} seconds; try a simpler pattern",
+              "#{timeout} seconds; try a simpler pattern",
           )
         end
 

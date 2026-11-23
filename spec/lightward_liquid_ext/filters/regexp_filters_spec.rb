@@ -91,11 +91,31 @@ RSpec.describe(LightwardLiquidExt::Filters::RegexpFilters) do
       end
     end
 
-    it "can be turned off" do
+    it "inherits Ruby's global Regexp.timeout when set to nil" do
       LightwardLiquidExt.regexp_timeout = nil
 
       expect(render_liquid('{{ "abc" | match: "b" }}')).to(eq("b"))
       expect(LightwardLiquidExt::Filters::RegexpFilters.send(:compile, "b", nil).timeout).to(be_nil)
+    end
+
+    context "with a global Regexp.timeout and the gem's setting nil" do
+      around do |example|
+        original = Regexp.timeout
+        Regexp.timeout = 0.07
+        example.run
+      ensure
+        Regexp.timeout = original
+      end
+
+      it "times out under the global value, and names it" do
+        LightwardLiquidExt.regexp_timeout = nil
+
+        [["match", "(?=(a|aa)+$)"], ["scan", "(?=(a|aa)+$)"]].each do |filter, pattern|
+          expect {
+            render_liquid("{{ s | #{filter}: p }}", { "s" => "#{"a" * 3000}!", "p" => pattern })
+          }.to(raise_error(Liquid::Error, /\ALiquid error: #{filter} gave up on pattern .+ after 0.07 seconds; try a simpler pattern\z/))
+        end
+      end
     end
 
     it "reuses compiled patterns, a bounded number of them" do

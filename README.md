@@ -132,7 +132,7 @@ Regular expressions, written as Ruby-compatible pattern strings:
 
 `match` returns the first match, or nil. `scan` returns every match. A match renders as the matched text and behaves like it for string filters and for `size`, `first` and `last` (its length, first character and last character), with `captures` and `named_captures` for the groups. Matches don't sort; `map` them to strings first. There's no `m[0]` or `m["name"]`: Liquid reads `m.foo` and `m["foo"]` as the same lookup, so asking for the captures by name keeps it clear what you're getting. See [match](https://learn.mechanic.dev/platform/liquid/filters#match) and [scan](https://learn.mechanic.dev/platform/liquid/filters#scan).
 
-Each match gives up after `LightwardLiquidExt.regexp_timeout` seconds (1.0 by default; `nil` turns it off) with an error saying so. Compiled patterns are reused, up to a hundred at a time.
+Each match gives up after `LightwardLiquidExt.regexp_timeout` seconds (1.0 by default; `nil` inherits Ruby's process-wide `Regexp.timeout`, which is no limit unless you set one) with an error saying so. Compiled patterns are reused, up to a hundred at a time.
 
 ### `push`, `unshift`, `json` and `parse_json`
 
