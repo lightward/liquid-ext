@@ -40,6 +40,16 @@ RSpec.describe(LightwardLiquidExt::Filters::JsonFilters) do
       expect {
         render_liquid("{{ s | parse_json }}", { "s" => input })
       }.to(raise_error(Liquid::ArgumentError) { |error|
+        chain = []
+        link = error
+        while link
+          chain << link
+          link = link.cause
+        end
+
+        expect(chain.map(&:class)).not_to(include(JSON::ParserError))
+        chain.each { |each_error| expect(each_error.message).not_to(include("SECRET-MARKER")) }
+        expect(error.full_message(highlight: false)).not_to(include("SECRET-MARKER"))
         expect(error.message).not_to(include("SECRET-MARKER"))
         expect(error.message).to(include("at line 1, column 4002"))
         expect(error.message).to(end_with("#{input[0, 80]}…"))

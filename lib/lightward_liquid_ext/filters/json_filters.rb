@@ -31,7 +31,9 @@ module LightwardLiquidExt
         column = error.respond_to?(:column) ? error.column : nil
         position = line && column ? " at line #{line}, column #{column}" : ""
 
-        raise(ArgumentError, "parse_json failed: invalid JSON#{position}\n\ninput:\n#{Support.excerpt(object)}")
+        # cause: nil, so the parser's error (and the input it quotes) doesn't ride
+        # along in the cause chain into a host's logs.
+        raise(ArgumentError, "parse_json failed: invalid JSON#{position}\n\ninput:\n#{Support.excerpt(object)}", cause: nil)
       end
 
       # Walks hashes and collections at most MAX_DEPTH deep (which also stops a
